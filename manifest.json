@@ -1,0 +1,15 @@
+{
+    "manifest_version": 3,
+    "name": "Chat Collapser for ChatGPT",
+    "description": "Collapse and expand ChatGPT messages for easier navigation.",
+    "version": "0.1",
+    "permissions": ["activeTab", "scripting"],
+    "content_scripts": [
+      {
+        "matches": ["https://chatgpt.com/*"],
+        "js": ["content.js"],
+        "css": ["styles.css"]
+      }
+    ]
+  }
+  
