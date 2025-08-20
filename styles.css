@@ -1,21 +1,117 @@
-.chatgpt-collapser-toggle {
-    background: #ececec;
-    border: none;
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 12px;
+.collapse-button-container {
+    position: relative;
+    margin-bottom: 8px;
+  }
+  
+  .collapse-btn {
+    background: #f7f7f8;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 4px 8px;
     cursor: pointer;
-    margin-bottom: 4px;
+    font-size: 12px;
+    color: #6b7280;
+    transition: all 0.2s ease;
     position: absolute;
-    top: 4px;
-    right: 12px;
+    top: -5px;
+    right: 10px;
     z-index: 10;
   }
   
-  .chatgpt-collapser-hidden {
-    display: none !important;
+  .collapse-btn:hover {
+    background: #e5e7eb;
+    border-color: #9ca3af;
+    color: #374151;
   }
   
-  .chatgpt-collapser-wrapper {
+  .message-wrapper.collapsed {
+    display: none;
+  }
+  
+  /* Preview styles */
+  .message-preview {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 8px 0;
+    font-style: italic;
+    color: #6c757d;
+    cursor: pointer;
+    transition: all 0.2s ease;
     position: relative;
-  }  
+  }
+  
+  .message-preview:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+  }
+  
+  .message-preview::before {
+    content: "📝 ";
+    margin-right: 8px;
+    opacity: 0.7;
+  }
+  
+  /* Different icons for user vs assistant */
+  [data-message-author-role="user"] + .message-preview::before,
+  [data-message-author-role="user"] .message-preview::before {
+    content: "👤 ";
+  }
+  
+  [data-message-author-role="assistant"] + .message-preview::before,
+  [data-message-author-role="assistant"] .message-preview::before {
+    content: "🤖 ";
+  }
+  
+  .preview-text {
+    line-height: 1.4;
+    display: block;
+  }
+  
+  /* Dark mode support */
+  .dark .collapse-btn {
+    background: #374151;
+    border-color: #4b5563;
+    color: #9ca3af;
+  }
+  
+  .dark .collapse-btn:hover {
+    background: #4b5563;
+    border-color: #6b7280;
+    color: #d1d5db;
+  }
+  
+  .dark .message-preview {
+    background: #2d3748;
+    border-color: #4a5568;
+    color: #a0aec0;
+  }
+  
+  .dark .message-preview:hover {
+    background: #4a5568;
+    border-color: #718096;
+  }
+  
+  /* Smooth animation for collapse */
+  .message-wrapper {
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
+  
+  /* Style adjustments for better integration */
+  [data-message-author-role] {
+    position: relative;
+  }
+  
+  .collapse-button-container {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 5px;
+  }
+  
+  /* Make preview clickable to expand */
+  .message-preview {
+    cursor: pointer;
+  }
+  

@@ -1,138 +1,336 @@
-// Function to add collapse/expand functionality to a given element
-function addCollapseToggle(element) {
-    // Check if the element already has a toggle button to prevent duplicates
-    if (element.dataset.collapseToggleAdded) {
-        return;
-    }
 
-    // Create the collapse/expand button
-    const toggleButton = document.createElement('button');
-    toggleButton.textContent = 'Collapse';
-    toggleButton.style.cssText = `
-        margin-left: 10px;
-        padding: 4px 8px;
-        border: none;
-        border-radius: 4px;
-        background-color: #f0f0f0;
-        color: #333;
-        cursor: pointer;
-        font-size: 0.8em;
-        transition: background-color 0.2s ease;
-    `;
-
-    // Add hover effect
-    toggleButton.onmouseover = () => {
-        toggleButton.style.backgroundColor = '#e0e0e0';
-    };
-    toggleButton.onmouseout = () => {
-        toggleButton.style.backgroundColor = '#f0f0f0';
-    };
-
-    // Find the most suitable place to append the button.
-    // For ChatGPT, the query/response content is often within a parent div
-    // that has a header or avatar. We want to place the button near the top.
-    let targetParent = null;
-
-
-    // Try to find a header or the first paragraph within the element
-    const header = element.querySelector('h1, h2, h3, h4, h5, h6');
-    const firstParagraph = element.querySelector('p');
-
-    if (header) {
-        // Append next to the header if found
-        targetParent = header.parentElement;
-    } else if (firstParagraph) {
-        // Append near the first text content if no header
-        targetParent = firstParagraph.parentElement;
-    } else {
-        // Fallback to the element itself or its direct child if no specific target
-        targetParent = element.querySelector('div') || element;
-    }
-
-    targetParent.style.border = '1px solid red';
-
-    if (targetParent) {
-        // Insert the button before the content that needs to be collapsed
-        // This assumes the content to collapse is typically a sibling element
-        // or contained within a sibling.
-        // We'll target the immediate next sibling after the point where the button is inserted.
-        const contentToToggle = element.querySelector('.markdown, .whitespace-pre-wrap') ||
-                                element.querySelector('.prose') ||
-                                element.lastElementChild; // Fallback to last child
-
-
-        if (contentToToggle && contentToToggle !== toggleButton) {
-             // Insert the button at the beginning of the element, or near its header/avatar
-            const parentOfButton = element.querySelector('div[data-message-id]').parentElement || element.firstElementChild || element;
-            parentOfButton.insertBefore(toggleButton, parentOfButton.firstElementChild);
-
-
-            let isCollapsed = false;
-
-            // Store the original display style to revert correctly
-            const originalDisplay = contentToToggle.style.display;
-
-            toggleButton.addEventListener('click', () => {
-                if (isCollapsed) {
-                    contentToToggle.style.display = originalDisplay; // Restore original display
-                    toggleButton.textContent = 'Collapse';
-                } else {
-                    contentToToggle.style.display = 'none';
-                    toggleButton.textContent = 'Expand';
-                }
-                isCollapsed = !isCollapsed;
-            });
-
-            element.dataset.collapseToggleAdded = 'true'; // Mark as processed
-        }
-    }
+var savedLocalData = {}
+function log(...args) {
+  console.log(...args);
 }
+// Wait for the page to load and continuously monitor for new messages
+async function initializeCollapsibleMessages() {
+  let debouncer;
+    const observer = new MutationObserver(() => {
+      clearTimeout(debouncer);
+      debouncer = setTimeout(() => {
+        addCollapseButtons();
+        requestAnimationFrame(async () => {
+          const chatId = window.location.toString().split('/').pop();
+          // apply collapse columns from saved local data
+          const collapsedIds = await fetchCollapsedMeesageIds(chatId);
+          // log("Initial state: ", collapsedIds);
+          collapseMessageById(...collapsedIds)
+        })
+      }, 300);
 
-// Function to observe DOM changes and apply the collapse functionality
-function observeChatElements() {
-    // Select all potential query/response containers.
-    // ChatGPT's structure often uses specific classes for messages.
-    // We'll look for common parent elements that contain the user's query and the AI's response.
-    // Example selectors (these might change with ChatGPT updates):
-    // - div[data-testid^="conversation-turn-"] (more reliable)
-    // - .group.w-full (common message container)
-    const messageContainers = document.querySelectorAll(
-        'article[data-testid^="conversation-turn-"], .group.w-full'
-    );
+    });
+  
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+    
+  }
 
-    messageContainers.forEach(addCollapseToggle);
-}
+  function collapseMessageById(...ids) {
+    const messageContainers = document.querySelectorAll('[data-message-author-role]');
+    // log("message containers: ", messageContainers);
+    const messagesToCollapse = Array(...messageContainers).filter((container) => {
+      let id = container.getAttribute('data-message-id');
+      return ids.includes(id);
+    })
 
-// Use a MutationObserver to detect when new chat elements are added to the DOM
-// This ensures the buttons are added dynamically as you chat.
-const observer = new MutationObserver((mutationsList, observer) => {
-    for (const mutation of mutationsList) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-            // Check if any added node is a potential chat message, or contains one
-            mutation.addedNodes.forEach(node => {
-                if (node.nodeType === 1) { // Element node
-                    if (node.matches('article[data-testid^="conversation-turn-"]') || node.matches('.group.w-full')) {
-                        addCollapseToggle(node);
-                    } else {
-                        // If the added node is a parent containing messages, observe its children
-                        const newMessages = node.querySelectorAll(
-                            'article[data-testid^="conversation-turn-"], .group.w-full'
-                        );
-                        newMessages.forEach(addCollapseToggle);
-                    }
-                }
-            });
+    messagesToCollapse.forEach((m) => {
+      const wrapper = m.querySelector('.message-wrapper');
+      const preview = m.querySelector('.message-preview');
+      const btn = m.querySelector('.collapse-btn')
+      if (wrapper && preview && !wrapper.classList.contains('collapsed')) {
+        const isUser = m.getAttribute('data-message-author-role') === 'user';
+        const messageId = m.getAttribute('data-message-id')
+        toggleCollapse(wrapper, preview, btn, isUser, messageId);
+      }
+    })
+  }
+  
+  function addCollapseButtons() {
+    log("Adding collapse buttons");
+
+    const messageContainers = document.querySelectorAll('[data-message-author-role]');
+    
+    messageContainers.forEach((container, index) => {
+      if (container.querySelector('.collapse-btn')) return; // Skip if button already exists
+      
+      const role = container.getAttribute('data-message-author-role');
+      const isUser = role === 'user';
+      
+      const collapseBtn = document.createElement('button');
+      collapseBtn.className = 'collapse-btn';
+      collapseBtn.innerHTML = '▼';
+      collapseBtn.title = isUser ? 'Collapse query' : 'Collapse response';
+      
+      const messageContent = container.querySelector('[data-message-id]') || 
+                            container.querySelector('.markdown') || 
+                            container.querySelector('div > div');
+      
+      const messageID = container.getAttribute('data-message-id');
+      if (!messageContent) return;
+      
+      // Create wrapper and preview elements
+      const wrapper = document.createElement('div');
+      wrapper.className = 'message-wrapper w-full';
+      
+      const preview = document.createElement('div');
+      preview.className = 'message-preview collapsed-preview';
+      preview.style.display = 'none';
+      
+      // Extract and set preview text
+      const previewText = extractPreviewText(messageContent, isUser);
+      preview.innerHTML = `<span class="preview-text">${previewText}</span>`;
+      
+      // Insert wrapper before messageContent
+      messageContent.parentNode.insertBefore(wrapper, messageContent);
+      wrapper.appendChild(messageContent);
+      
+      // Insert preview after wrapper
+      wrapper.parentNode.insertBefore(preview, wrapper.nextSibling);
+      
+      // Create button container
+      const buttonContainer = document.createElement('div');
+      buttonContainer.className = 'collapse-button-container';
+      buttonContainer.appendChild(collapseBtn);
+      container.insertBefore(buttonContainer, container.firstChild);
+      
+      // Add click event
+      collapseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleCollapse(wrapper, preview, collapseBtn, isUser, messageID);
+      });
+    });
+  }
+  
+  function extractPreviewText(messageContent, isUser) {
+    let text = '';
+    
+    try {
+      // For user messages (usually plain text)
+      if (isUser) {
+        text = messageContent.textContent || messageContent.innerText || '';
+      } else {
+        // For AI responses, try to get the first meaningful paragraph
+        const paragraphs = messageContent.querySelectorAll('p');
+        if (paragraphs.length > 0) {
+          text = paragraphs[0].textContent || paragraphs[0].innerText || '';
+        } else {
+          // Fallback to general text content
+          text = messageContent.textContent || messageContent.innerText || '';
         }
+      }
+      
+      // Clean up the text
+      text = text.trim();
+      
+      // Get first line or first sentence, whichever is shorter
+      const firstLine = text.split('\n')[0];
+      const firstSentence = text.split(/[.!?]/)[0];
+      
+      let preview = firstLine.length <= firstSentence.length ? firstLine : firstSentence;
+      
+      // Limit length and add ellipsis if needed
+      const maxLength = 100;
+      if (preview.length > maxLength) {
+        preview = preview.substring(0, maxLength) + '...';
+      } else if (preview !== text) {
+        preview += '...';
+      }
+      
+      return preview || 'Click to expand...';
+      
+    } catch (error) {
+      console.error('Error extracting preview text:', error);
+      return 'Click to expand...';
     }
-});
+  }
+  
+  async function toggleCollapse(wrapper, preview, button, isUser, messageId) {
+    try {
+      const isCollapsed = wrapper.classList.contains('collapsed');
+      log(isCollapsed? `expanding message with ID - ${messageId}`: `collapsing message with ID - ${messageId}`);
+      const chatId = window.location.toString().split('/').pop();
+      if (isCollapsed) {
+        // Expand
+        wrapper.classList.remove('collapsed');
+        wrapper.style.display = '';
+        preview.style.display = 'none';
+        button.innerHTML = '▼';
+        button.title = isUser ? 'Collapse query' : 'Collapse response';
+        let currenIds = await fetchCollapsedMeesageIds(chatId)
+        log("Current ids: ", currenIds);
+        let newIds = currenIds.filter((id) => id != messageId);
+        log("new ids: ", newIds);
+        await setCollapseMessageIds(chatId, [...new Set(newIds)]);
+      } else {
+        // Collapse
+        wrapper.classList.add('collapsed');
+        wrapper.style.display = 'none';
+        preview.style.display = 'block';
+        button.innerHTML = '▶';
+        button.title = isUser ? 'Expand query' : 'Expand response';
+        let currenIds = await fetchCollapsedMeesageIds(chatId)
+        log("collapsing: ", messageId);
+        let newIds = [...currenIds, messageId];
+        log("new ids: ", newIds);
+        await setCollapseMessageIds(chatId, [...new Set(newIds)]);
+        log("collapse complete for id", messageId)
+    }
+    } catch (e) {
+      log("Error: ", e);
+    }
+    
+  }
+  
+  // Alternative selectors for different ChatGPT layouts
+  // function addCollapseButtonsAlternative() {
+  //   log("Adding collapse alternative");
+  //   const messages = document.querySelectorAll('div[class*="group"]');
+    
+  //   messages.forEach((message) => {
+  //     if (message.querySelector('.collapse-btn')) return;
+      
+  //     const userMessage = message.querySelector('div[class*="whitespace-pre-wrap"]');
+  //     const assistantMessage = message.querySelector('div[class*="markdown"]');
+  //     const targetContent = userMessage || assistantMessage;
+      
+  //     if (targetContent) {
+  //       addCollapseToElementWithPreview(message, targetContent, !!userMessage);
+  //     }
+  //   });
+  // }
+  
+  // function addCollapseToElementWithPreview(container, content, isUser) {
+  //   const collapseBtn = document.createElement('button');
+  //   collapseBtn.className = 'collapse-btn';
+  //   collapseBtn.innerHTML = '▼';
+  //   collapseBtn.title = isUser ? 'Collapse query' : 'Collapse response';
+    
+  //   // Create wrapper and preview
+  //   const wrapper = document.createElement('div');
+  //   wrapper.className = 'message-wrapper';
+    
+  //   const preview = document.createElement('div');
+  //   preview.className = 'message-preview collapsed-preview';
+  //   preview.style.display = 'none';
+    
+  //   // Extract preview text
+  //   const previewText = extractPreviewText(content, isUser);
+  //   preview.innerHTML = `<span class="preview-text">${previewText}</span>`;
+    
+  //   // Wrap content
+  //   content.parentNode.insertBefore(wrapper, content);
+  //   wrapper.appendChild(content);
+  //   wrapper.parentNode.insertBefore(preview, wrapper.nextSibling);
+    
+  //   // Add button
+  //   const buttonContainer = document.createElement('div');
+  //   buttonContainer.className = 'collapse-button-container';
+  //   buttonContainer.appendChild(collapseBtn);
+  //   container.insertBefore(buttonContainer, container.firstChild);
+    
+  //   collapseBtn.addEventListener('click', (e) => {
+  //     e.stopPropagation();
+  //     toggleCollapse(wrapper, preview, collapseBtn, isUser);
+  //   });
+  // }
 
-// Start observing the body for changes
-// This is broad, but necessary for dynamic content loading in SPAs like ChatGPT.
-observer.observe(document.body, { childList: true, subtree: true });
+  async function fetchCollapsedMeesageIds(chatId) {
+    let state = await chrome.storage.local.get('cgc');
+    // log("State: ", state);
+    if(!state['cgc']) {
+      await chrome.storage.local.set({'cgc': {}});
+      return []
+    }
+    if(state['cgc'] && state['cgc'][chatId]) return state['cgc'][chatId]['messageIds'] || [];
+    return [];
+  }
 
- // Also run on initial load in case messages are already present when the script first executes.
- window.addEventListener('load', observeChatElements);
-
- // Set a fallback interval to periodically check for new elements.
- // This can catch elements that might be missed by the MutationObserver due to complex rendering.
- setInterval(observeChatElements, 1000);
+  async function setCollapseMessageIds(chatId, messageIds) {
+    log("Tweaking storage")
+    let state = await chrome.storage.local.get('cgc');
+    let expiry = new Date();
+    expiry.setDate(expiry.getDate() + 7);
+    expiry = expiry.getTime();
+    if(state['cgc'][chatId]) {
+      await chrome.storage.local.set({'cgc': {
+        ...state['cgc'],
+        [chatId]: {
+          ...state[chatId], 
+          messageIds,
+          expiry
+        }
+      }});
+    }
+    else {
+      await chrome.storage.local.set({'cgc': {
+        ...state['cgc'],
+        [chatId]: {
+          messageIds,
+          expiry
+        }
+      }});
+    }
+  }
+  
+  // Keyboard shortcuts with preview support
+  document.addEventListener('keydown', async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+      e.preventDefault();
+      await collapseAll();
+    }
+    
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E') {
+      e.preventDefault();
+      await expandAll();
+    }
+  });
+  
+  async function collapseAll() {
+    const buttons = document.querySelectorAll('.collapse-btn');
+    for(const btn of buttons) {
+      const container = btn.closest('[data-message-author-role]');
+      if (!container) return;
+      
+      const wrapper = container.querySelector('.message-wrapper');
+      const preview = container.querySelector('.message-preview');
+      
+      if (wrapper && preview && !wrapper.classList.contains('collapsed')) {
+        const isUser = container.getAttribute('data-message-author-role') === 'user';
+        const messageId = container.getAttribute('data-message-id')
+        await toggleCollapse(wrapper, preview, btn, isUser, messageId);
+      }
+    }
+  }
+  
+  async function expandAll() {
+    const buttons = document.querySelectorAll('.collapse-btn');
+    for(const btn of buttons) {
+      const container = btn.closest('[data-message-author-role]');
+      if (!container) return;
+      
+      const wrapper = container.querySelector('.message-wrapper');
+      const preview = container.querySelector('.message-preview');
+      
+      if (wrapper && preview && wrapper.classList.contains('collapsed')) {
+        const isUser = container.getAttribute('data-message-author-role') === 'user';
+        const messageId = container.getAttribute('data-message-id')
+        await toggleCollapse(wrapper, preview, btn, isUser, messageId);
+      }
+    }
+  }
+  
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeCollapsibleMessages);
+  } else {
+    initializeCollapsibleMessages();
+  }
+  
+  // Also try alternative method for different layouts
+  // setTimeout(() => {
+  //   addCollapseButtonsAlternative();
+  // }, 2000);
+  
